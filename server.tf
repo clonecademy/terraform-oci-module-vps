@@ -97,11 +97,12 @@ resource "oci_core_instance" "main" {
     boot_volume_vpus_per_gb = var.free_boot_volume_vpus_per_gb
   }
 
+  # The reserved public IP below is attached instead; an ephemeral one would be lost whenever the instance is replaced.
   create_vnic_details {
     subnet_id                 = var.subnet_id
     display_name              = "main-instance-vnic"
     hostname_label            = "main"
-    assign_public_ip          = true
+    assign_public_ip          = false
     assign_private_dns_record = true
   }
 
@@ -132,6 +133,34 @@ resource "oci_core_instance" "main" {
   }
 }
 
+data "oci_core_vnic_attachments" "main" {
+  compartment_id = var.compartment_id
+  instance_id    = oci_core_instance.main.id
+}
+
+data "oci_core_private_ips" "main" {
+  vnic_id = data.oci_core_vnic_attachments.main.vnic_attachments[0].vnic_id
+}
+
+locals {
+  primary_private_ip_id = one([
+    for private_ip in data.oci_core_private_ips.main.private_ips :
+    private_ip.id if private_ip.is_primary
+  ])
+}
+
+# A reserved public IP outlives the instance: if the server is replaced, it moves to the new instance's private IP.
+resource "oci_core_public_ip" "main" {
+  compartment_id = var.compartment_id
+  display_name   = "main-instance-public-ip"
+  lifetime       = "RESERVED"
+  private_ip_id  = local.primary_private_ip_id
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 output "instance_availability_domain" {
   description = "Availability domain the instance was placed in"
   value       = oci_core_instance.main.availability_domain
@@ -158,11 +187,11 @@ output "instance_private_ip" {
 }
 
 output "instance_public_ip" {
-  description = "Ephemeral public IP address of the instance"
-  value       = oci_core_instance.main.public_ip
+  description = "Reserved public IP address of the instance"
+  value       = oci_core_public_ip.main.ip_address
 }
 
 output "instance_ssh_command" {
   description = "Command to connect to the instance as the default ubuntu user"
-  value       = "ssh ubuntu@${oci_core_instance.main.public_ip}"
+  value       = "ssh ubuntu@${oci_core_public_ip.main.ip_address}"
 }
