@@ -104,6 +104,7 @@ resource "oci_core_instance" "main" {
     hostname_label            = "main"
     assign_public_ip          = false
     assign_private_dns_record = true
+    nsg_ids                   = [oci_core_network_security_group.main.id]
   }
 
   # An admin must initially upload their SSH key before managing SSH using authorized_keys.
