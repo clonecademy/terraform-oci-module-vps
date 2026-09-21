@@ -41,6 +41,14 @@ variable "free_boot_volume_vpus_per_gb" {
   default     = "10"
 }
 
+# A preserved boot volume still counts against the 200 GB Always Free allowance, and the server's boot volume is that whole
+# allowance, so on the free tier a replacement instance could not get its own. Opt in only with headroom to spare.
+variable "preserve_boot_volume" {
+  description = "Whether to keep the boot volume when the instance is destroyed. Kept volumes are orphaned and must be deleted by hand."
+  type        = bool
+  default     = false
+}
+
 variable "ssh_public_key_path" {
   description = "Path to the SSH public key installed on the server via authorized_keys."
   type        = string
@@ -112,8 +120,7 @@ resource "oci_core_instance" "main" {
     ssh_authorized_keys = file(pathexpand(var.ssh_public_key_path))
   }
 
-  # Release the 200 GB back to the free allowance when the instance is destroyed.
-  preserve_boot_volume = false
+  preserve_boot_volume = var.preserve_boot_volume
 
   lifecycle {
     # Because vendors publish new images regularly, the newest image would become the desired source_id and a routine apply would
