@@ -10,10 +10,23 @@ variable "ssh_ingress_cidrs" {
   }
 }
 
+# Unlike SSH, this rule exposes nothing: tailscaled drops any packet that is not from an authenticated peer, so the
+# default is the safe one either way and a consumer who does not run Tailscale should leave it alone.
+variable "tailscale_direct_ingress" {
+  description = "Whether to accept inbound Tailscale traffic so peers can connect directly instead of relaying through DERP. Tailscale works without this; it is a latency and throughput improvement."
+  type        = bool
+  default     = false
+}
+
 locals {
   protocol_tcp = "6"
+  protocol_udp = "17"
+
+  anywhere_cidr = "0.0.0.0/0"
 
   ssh_port = 22
+
+  tailscale_port = 41641
 }
 
 # The NSG is looked up from the subnet rather than taken as a variable so that it cannot disagree with the subnet the
@@ -45,6 +58,27 @@ resource "oci_core_network_security_group_security_rule" "ssh_ingress" {
     destination_port_range {
       min = local.ssh_port
       max = local.ssh_port
+    }
+  }
+}
+
+# Tailscale establishes its tunnel over egress alone and falls back to a DERP relay when it cannot reach a peer directly.
+# Accepting the port tailscaled listens on lets peers skip the relay. The source has to be the whole internet because a
+# peer can dial in from any address it happens to have.
+resource "oci_core_network_security_group_security_rule" "tailscale_direct_ingress" {
+  count = var.tailscale_direct_ingress ? 1 : 0
+
+  network_security_group_id = oci_core_network_security_group.main.id
+  direction                 = "INGRESS"
+  protocol                  = local.protocol_udp
+  source                    = local.anywhere_cidr
+  source_type               = "CIDR_BLOCK"
+  stateless                 = false
+
+  udp_options {
+    destination_port_range {
+      min = local.tailscale_port
+      max = local.tailscale_port
     }
   }
 }
