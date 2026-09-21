@@ -18,6 +18,14 @@ variable "tailscale_direct_ingress" {
   default     = false
 }
 
+# Serving web apps means answering the whole internet, so unlike SSH there is nothing to narrow. It is still opt-in so that a
+# consumer who is not hosting anything does not get ports opened they never asked for.
+variable "web_ingress" {
+  description = "Whether to accept inbound HTTP (TCP 80) and HTTPS (TCP 443) from the internet, for hosting web apps."
+  type        = bool
+  default     = false
+}
+
 locals {
   protocol_tcp = "6"
   protocol_udp = "17"
@@ -27,6 +35,11 @@ locals {
   ssh_port = 22
 
   tailscale_port = 41641
+
+  web_ports = {
+    http  = 80
+    https = 443
+  }
 }
 
 # The NSG is looked up from the subnet rather than taken as a variable so that it cannot disagree with the subnet the
@@ -79,6 +92,24 @@ resource "oci_core_network_security_group_security_rule" "tailscale_direct_ingre
     destination_port_range {
       min = local.tailscale_port
       max = local.tailscale_port
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "web_ingress" {
+  for_each = var.web_ingress ? local.web_ports : {}
+
+  network_security_group_id = oci_core_network_security_group.main.id
+  direction                 = "INGRESS"
+  protocol                  = local.protocol_tcp
+  source                    = local.anywhere_cidr
+  source_type               = "CIDR_BLOCK"
+  stateless                 = false
+
+  tcp_options {
+    destination_port_range {
+      min = each.value
+      max = each.value
     }
   }
 }
