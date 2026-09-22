@@ -38,12 +38,15 @@ module "vps" {
   ssh_ingress_cidrs   = ["203.0.113.4/32"]
 
   # Optional
-  web_ingress        = true
-  alarm_destinations = [oci_ons_notification_topic.alerts.id]
+  web_ingress            = true
+  dokploy_ingress_cidrs  = ["203.0.113.4/32"]
+  alarm_destinations     = [oci_ons_notification_topic.alerts.id]
 }
 ```
 
 To reach the server only over a VPN such as Tailscale, pass `ssh_ingress_cidrs = []`. This opens no SSH port to the internet. You can also set `tailscale_direct_ingress = true` so peers connect directly instead of going through a relay.
+
+To run [Dokploy](https://dokploy.com) on the instance, install it by hand (there is no cloud-init hook for it, matching how Tailscale is installed) and pass `dokploy_ingress_cidrs` with the addresses that should reach its dashboard on TCP 3000. It defaults to closed and, like SSH, is meant to be narrowed to known addresses rather than opened to everyone: the dashboard doubles as an unauthenticated setup screen on first boot. Apps Dokploy deploys are reached through `web_ingress` (TCP 80/443) once Dokploy's Traefik proxy fronts them, not through this port.
 
 ## Inputs
 
@@ -76,6 +79,7 @@ To reach the server only over a VPN such as Tailscale, pass `ssh_ingress_cidrs =
 | --- | --- | --- | --- |
 | `tailscale_direct_ingress` | `bool` | `false` | Accept UDP 41641 from anywhere so Tailscale peers can connect directly instead of through a DERP relay. Tailscale works without it. |
 | `web_ingress` | `bool` | `false` | Accept HTTP (TCP 80) and HTTPS (TCP 443) from anywhere. |
+| `dokploy_ingress_cidrs` | `list(string)` | `[]` | IPv4 CIDR blocks allowed to reach the Dokploy dashboard on TCP 3000. `[]` opens nothing, e.g. when reached over a VPN such as Tailscale. |
 
 ### Backups
 

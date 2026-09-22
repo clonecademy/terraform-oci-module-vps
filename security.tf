@@ -26,6 +26,20 @@ variable "web_ingress" {
   default     = false
 }
 
+# Unlike web_ingress, the Dokploy dashboard is an admin panel (and an unauthenticated setup screen on first boot), not a
+# hosted app, so it defaults closed and is meant to be narrowed to known addresses, the same pattern as SSH, instead of
+# opened to everyone.
+variable "dokploy_ingress_cidrs" {
+  description = "CIDR blocks allowed to reach the Dokploy dashboard on TCP 3000. Pass an empty list to expose no Dokploy port at all, e.g. when it's reached over a VPN such as Tailscale."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for cidr in var.dokploy_ingress_cidrs : can(cidrhost(cidr, 0))])
+    error_message = "Dokploy ingress CIDRs must be valid IPv4 CIDR notation, e.g. 203.0.113.4/32."
+  }
+}
+
 locals {
   protocol_tcp = "6"
   protocol_udp = "17"
@@ -40,6 +54,8 @@ locals {
     http  = 80
     https = 443
   }
+
+  dokploy_port = 3000
 }
 
 # The NSG is looked up from the subnet rather than taken as a variable so that it cannot disagree with the subnet the
@@ -92,6 +108,25 @@ resource "oci_core_network_security_group_security_rule" "tailscale_direct_ingre
     destination_port_range {
       min = local.tailscale_port
       max = local.tailscale_port
+    }
+  }
+}
+
+# An empty dokploy_ingress_cidrs produces no rules at all, the same VPN-only pattern as SSH.
+resource "oci_core_network_security_group_security_rule" "dokploy_ingress" {
+  for_each = toset(var.dokploy_ingress_cidrs)
+
+  network_security_group_id = oci_core_network_security_group.main.id
+  direction                 = "INGRESS"
+  protocol                  = local.protocol_tcp
+  source                    = each.value
+  source_type               = "CIDR_BLOCK"
+  stateless                 = false
+
+  tcp_options {
+    destination_port_range {
+      min = local.dokploy_port
+      max = local.dokploy_port
     }
   }
 }
