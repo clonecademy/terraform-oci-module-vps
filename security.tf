@@ -10,6 +10,14 @@ variable "ssh_ingress_cidrs" {
   }
 }
 
+# A Minecraft server is played by whoever the operator invites, from whatever address they happen to be on, so like
+# web_ingress (and unlike SSH/Dokploy) there is nothing to narrow to a CIDR list — it is a plain on/off switch.
+variable "minecraft_ingress" {
+  description = "Whether to accept inbound Minecraft traffic (TCP 25565) from the internet."
+  type        = bool
+  default     = false
+}
+
 # Unlike SSH, this rule exposes nothing: tailscaled drops any packet that is not from an authenticated peer, so the
 # default is the safe one either way and a consumer who does not run Tailscale should leave it alone.
 variable "tailscale_direct_ingress" {
@@ -56,6 +64,8 @@ locals {
   }
 
   dokploy_port = 3000
+
+  minecraft_port = 25565
 }
 
 # The NSG is looked up from the subnet rather than taken as a variable so that it cannot disagree with the subnet the
@@ -127,6 +137,24 @@ resource "oci_core_network_security_group_security_rule" "dokploy_ingress" {
     destination_port_range {
       min = local.dokploy_port
       max = local.dokploy_port
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "minecraft_ingress" {
+  count = var.minecraft_ingress ? 1 : 0
+
+  network_security_group_id = oci_core_network_security_group.main.id
+  direction                 = "INGRESS"
+  protocol                  = local.protocol_tcp
+  source                    = local.anywhere_cidr
+  source_type               = "CIDR_BLOCK"
+  stateless                 = false
+
+  tcp_options {
+    destination_port_range {
+      min = local.minecraft_port
+      max = local.minecraft_port
     }
   }
 }
